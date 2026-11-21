@@ -38,7 +38,7 @@ def ask_gemini_image(img: Image.Image) -> str:
     img_rgb.save(buf, format="JPEG", quality=65)
     b64_img = base64.b64encode(buf.getvalue()).decode("utf-8")
 
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent"
     headers = {
         "Content-Type": "application/json",
         "x-goog-api-key": GEMINI_KEY,
