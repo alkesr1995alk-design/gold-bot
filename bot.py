@@ -7,8 +7,8 @@ import requests
 import telebot
 from PIL import Image
 
-BOT_TOKEN = "9208754077:AAEgYXa84Q6C16CFTYXJa1A9phfM_A_4v-4"
-GEMINI_KEY = "AIzaSyB-s0NMv_eUDojUEfJWTRBH9bf6JUKm-lQ"
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "9208754077:AAEgYXa84Q6C16CFTYXJa1A9phfM_A_4v-4")
+GEMINI_KEY = os.environ.get("GEMINI_KEY", "").strip()
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
@@ -32,6 +32,9 @@ def start_port_server():
 
 
 def ask_gemini_image(img: Image.Image) -> str:
+    if not GEMINI_KEY:
+        return "مفتاح GEMINI_KEY غير مضبوط في Environment على Render."
+
     img_rgb = img.convert("RGB")
     img_rgb.thumbnail((640, 640))
     buf = io.BytesIO()
@@ -55,7 +58,7 @@ def ask_gemini_image(img: Image.Image) -> str:
     }
 
     try:
-        r = requests.post(url, headers=headers, json=payload, timeout=12)
+        r = requests.post(url, headers=headers, json=payload, timeout=25)
         data = r.json()
         if r.status_code == 200:
             candidates = data.get("candidates", [])
@@ -67,7 +70,7 @@ def ask_gemini_image(img: Image.Image) -> str:
         err_msg = data.get("error", {}).get("message", r.text)
         return f"API Error: {err_msg[:300]}"
     except requests.exceptions.ReadTimeout:
-        return "السيرفر تأخر بالرد (أكثر من 12 ثانية)، جرّب أرسل الصورة مرة ثانية."
+        return "السيرفر تأخر بالرد (أكثر من 25 ثانية)، جرّب أرسل الصورة مرة ثانية."
     except Exception as e:
         return f"Request Error: {str(e)[:200]}"
 
