@@ -33,9 +33,9 @@ def start_port_server():
 
 def ask_gemini_image(img: Image.Image) -> str:
     img_rgb = img.convert("RGB")
-    img_rgb.thumbnail((800, 800))
+    img_rgb.thumbnail((640, 640))
     buf = io.BytesIO()
-    img_rgb.save(buf, format="JPEG", quality=65)
+    img_rgb.save(buf, format="JPEG", quality=55)
     b64_img = base64.b64encode(buf.getvalue()).decode("utf-8")
 
     url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent"
@@ -55,7 +55,7 @@ def ask_gemini_image(img: Image.Image) -> str:
     }
 
     try:
-        r = requests.post(url, headers=headers, json=payload, timeout=25)
+        r = requests.post(url, headers=headers, json=payload, timeout=12)
         data = r.json()
         if r.status_code == 200:
             candidates = data.get("candidates", [])
@@ -66,6 +66,8 @@ def ask_gemini_image(img: Image.Image) -> str:
                     return text_out
         err_msg = data.get("error", {}).get("message", r.text)
         return f"API Error: {err_msg[:300]}"
+    except requests.exceptions.ReadTimeout:
+        return "السيرفر تأخر بالرد (أكثر من 12 ثانية)، جرّب أرسل الصورة مرة ثانية."
     except Exception as e:
         return f"Request Error: {str(e)[:200]}"
 
