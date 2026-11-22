@@ -1,3 +1,111 @@
+import base64
+import io
+import os
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import requests
+import telebot
+from PIL import Image
+
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "9208754077:AAGPyOzAgNO43J5ESMYyH6rY8YJ-mQ2tE8o")
+GEMINI_KEY = os.environ.get("GEMINI_KEY", "").strip()
+
+bot = telebot.TeleBot(BOT_TOKEN)
+
+waiting_for_capital = {}
+
+PROMPT = """
+حلل صورة شارت التداول للسكالبينج السريع باستراتيجية SMC. 
+أجب باختصار شديد من أرقام الشارت الظاهرة فقط:
+- الاتجاه العام:
+- القرار: (BUY أو SELL أو WAIT)
+- نقطة الدخول (Entry):
+- وقف الخسارة (SL):
+- الهدف (TP):
+- السبب بسطر واحد:
+"""
+
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"OK")
+
+    def log_message(self, format, *args):
+        pass
+
+
+def start_port_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), HealthHandler)
+    server.serve_forever()
+
+
+def ask_gemini_image(img: Image.Image) -> str:
+    if not GEMINI_KEY:
+        return "مفتاح GEMINI_KEY غير مضبوط في Environment على Render."
+
+    img_rgb = img.convert("RGB")
+    img_rgb.thumbnail((640, 640))
+    buf = io.BytesIO()
+    img_rgb.save(buf, format="JPEG", quality=55)
+    b64_img = base64.b64encode(buf.getvalue()).decode("utf-8")
+
+    url = "https://googleapis.com"
+    headers = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": GEMINI_KEY,
+    }
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": PROMPT},
+                    {"inline_data": {"mime_type": "image/jpeg", "data": b64_img}},
+                ]
+            }
+        ]
+    }
+
+    try:
+        r = requests.post(url, headers=headers, json=payload, timeout=25)
+        data = r.json()
+        if r.status_code == 200:
+            candidates = data.get("candidates", [])
+            if candidates:
+                parts = candidates[0].get("content", {}).get("parts", [])
+                text_out = "".join(p.get("text", "") for p in parts).strip()
+                if text_out:
+                    return text_out
+        err_msg = data.get("error", {}).get("message", r.text)
+        return f"API Error: {err_msg[:300]}"
+    except requests.exceptions.ReadTimeout:
+        return "السيرفر تأخر بالرد (أكثر من 25 ثانية)، جرّب أرسل الصورة مرة ثانية."
+    except Exception as e:
+        return f"Request Error: {str(e)[:200]}"
+
+
+@bot.message_handler(commands=["start"])
+def send_welcome(message):
+    welcome_text = (
+        "أهلاً بك يا بطل في بوت تحليل الذهب (SMC)! 📊✨\n\n"
+        "كيف أستطيع مساعدتك اليوم؟\n"
+        "أرسل لي لقطة شاشة واضحة للشارت وسأقوم بتحليلها فوراً وإعطائك خطة الصفقة وإدارة رأس المال."
+    )
+    bot.reply_to(message, welcome_text)
+
+
+@bot.message_handler(content_types=["photo"])
+def handle_photo(message):
+    bot.reply_to(message, "⏳ جاري قراءة الشموع وتحليل السيولة...")
+    file_info = bot.get_file(message.photo[-1].file_id)
+    downloaded = bot.download_file(file_info.file_path)
+    img = Image.open(io.BytesIO(downloaded))
+    result = ask_gemini_image(img)
+    bot.reply_to(message, result)
+    
+    waiting_for_capital[message.chat.id] = True
     bot.send_message(message.chat.id, "💰 كم يبلغ رأس مالك الحالي بالدولار (اكتب الرقم فقط مثل: 50 أو 100) لأحسب لك حجم العقد الآمن؟")
 
 
@@ -27,3 +135,4 @@ if __name__ == "__main__":
     threading.Thread(target=start_port_server, daemon=True).start()
     print("Bot started...")
     bot.infinity_polling(skip_pending=True)
+    
