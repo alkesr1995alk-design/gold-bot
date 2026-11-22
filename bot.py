@@ -43,6 +43,24 @@ def start_port_server():
     server.serve_forever()
 
 
+def get_available_models(base_url):
+    try:
+        r = requests.get(base_url + "?key=" + GEMINI_KEY, timeout=15)
+        if r.status_code == 200:
+            data = r.json()
+            valid = []
+            for m in data.get("models", []):
+                name = m.get("name", "").replace("models/", "")
+                methods = m.get("supportedGenerationMethods", [])
+                if "generateContent" in methods and "flash" in name.lower():
+                    valid.append(name)
+            if valid:
+                return valid
+    except Exception:
+        pass
+    return ["gemini-3-flash-preview", "gemini-2.5-flash", "gemini-flash-latest"]
+
+
 def ask_gemini_image(img: Image.Image) -> str:
     if not GEMINI_KEY:
         return "مفتاح GEMINI_KEY غير مضبوط في Environment على Render."
@@ -53,7 +71,10 @@ def ask_gemini_image(img: Image.Image) -> str:
     img_rgb.save(buf, format="JPEG", quality=75)
     b64_img = base64.b64encode(buf.getvalue()).decode("utf-8")
 
-    models = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"]
+    host = "generativelanguage" + "." + "googleapis" + "." + "com"
+    base_url = "https://" + host + "/v1beta/models"
+    models = get_available_models(base_url)
+
     headers = {"Content-Type": "application/json"}
     payload = {
         "contents": [
@@ -67,9 +88,6 @@ def ask_gemini_image(img: Image.Image) -> str:
     }
 
     last_error = ""
-    host = "generativelanguage" + "." + "googleapis" + "." + "com"
-    base_url = "https://" + host + "/v1beta/models"
-
     for model_name in models:
         url = base_url + "/" + model_name + ":generateContent?key=" + GEMINI_KEY
         try:
@@ -141,3 +159,4 @@ if __name__ == "__main__":
     time.sleep(2)
     print("Bot started...")
     bot.infinity_polling(skip_pending=True)
+            
