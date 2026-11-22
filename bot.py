@@ -53,7 +53,6 @@ def ask_gemini_image(img: Image.Image) -> str:
     img_rgb.save(buf, format="JPEG", quality=75)
     b64_img = base64.b64encode(buf.getvalue()).decode("utf-8")
 
-    # قائمة النماذج بالترتيب لضمان عمل أحدها فوراً دون خطأ 404
     models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
     headers = {"Content-Type": "application/json"}
     payload = {
@@ -68,8 +67,11 @@ def ask_gemini_image(img: Image.Image) -> str:
     }
 
     last_error = ""
+    host = "generativelanguage" + "." + "googleapis" + "." + "com"
+    base_url = "https://" + host + "/v1beta/models"
+
     for model_name in models:
-        url = f"https://googleapis.com{model_name}:generateContent?key={GEMINI_KEY}"
+        url = base_url + "/" + model_name + ":generateContent?key=" + GEMINI_KEY
         try:
             r = requests.post(url, headers=headers, json=payload, timeout=30)
             if r.status_code == 200:
@@ -139,4 +141,4 @@ if __name__ == "__main__":
     time.sleep(2)
     print("Bot started...")
     bot.infinity_polling(skip_pending=True)
-    
+        
