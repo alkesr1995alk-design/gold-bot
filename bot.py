@@ -47,9 +47,9 @@ def ask_gemini_image(img: Image.Image) -> str:
         return "مفتاح GEMINI_KEY غير مضبوط في Environment على Render."
 
     img_rgb = img.convert("RGB")
-    img_rgb.thumbnail((640, 640))
+    img_rgb.thumbnail((800, 800))
     buf = io.BytesIO()
-    img_rgb.save(buf, format="JPEG", quality=55)
+    img_rgb.save(buf, format="JPEG", quality=75)
     b64_img = base64.b64encode(buf.getvalue()).decode("utf-8")
 
     url = "https://googleapis.com"
@@ -69,21 +69,22 @@ def ask_gemini_image(img: Image.Image) -> str:
     }
 
     try:
-        r = requests.post(url, headers=headers, json=payload, timeout=25)
+        r = requests.post(url, headers=headers, json=payload, timeout=30)
+        if r.status_code != 200:
+            return f"خطأ من السيرفر ({r.status_code}): {r.text[:250]}"
+        
         data = r.json()
-        if r.status_code == 200:
-            candidates = data.get("candidates", [])
-            if candidates:
-                parts = candidates[0].get("content", {}).get("parts", [])
-                text_out = "".join(p.get("text", "") for p in parts).strip()
-                if text_out:
-                    return text_out
-        err_msg = data.get("error", {}).get("message", r.text)
-        return f"API Error: {err_msg[:300]}"
+        candidates = data.get("candidates", [])
+        if candidates:
+            parts = candidates[0].get("content", {}).get("parts", [])
+            text_out = "".join(p.get("text", "") for p in parts).strip()
+            if text_out:
+                return text_out
+        return "لم يتمكن الذكاء الاصطناعي من استخراج نص من الصورة."
     except requests.exceptions.ReadTimeout:
-        return "السيرفر تأخر بالرد (أكثر من 25 ثانية)، جرّب أرسل الصورة مرة ثانية."
+        return "السيرفر تأخر بالرد، جرّب أرسل الصورة مرة ثانية."
     except Exception as e:
-        return f"Request Error: {str(e)[:200]}"
+        return f"حدث خطأ: {str(e)[:200]}"
 
 
 @bot.message_handler(commands=["start"])
@@ -135,4 +136,3 @@ if __name__ == "__main__":
     threading.Thread(target=start_port_server, daemon=True).start()
     print("Bot started...")
     bot.infinity_polling(skip_pending=True)
-    
