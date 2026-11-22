@@ -2,6 +2,7 @@ import base64
 import io
 import os
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import requests
 import telebot
@@ -52,11 +53,9 @@ def ask_gemini_image(img: Image.Image) -> str:
     img_rgb.save(buf, format="JPEG", quality=75)
     b64_img = base64.b64encode(buf.getvalue()).decode("utf-8")
 
-    url = "https://googleapis.com"
-    headers = {
-        "Content-Type": "application/json",
-        "x-goog-api-key": GEMINI_KEY,
-    }
+    # قائمة النماذج بالترتيب لضمان عمل أحدها فوراً دون خطأ 404
+    models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+    headers = {"Content-Type": "application/json"}
     payload = {
         "contents": [
             {
@@ -68,23 +67,25 @@ def ask_gemini_image(img: Image.Image) -> str:
         ]
     }
 
-    try:
-        r = requests.post(url, headers=headers, json=payload, timeout=30)
-        if r.status_code != 200:
-            return f"خطأ من السيرفر ({r.status_code}): {r.text[:250]}"
-        
-        data = r.json()
-        candidates = data.get("candidates", [])
-        if candidates:
-            parts = candidates[0].get("content", {}).get("parts", [])
-            text_out = "".join(p.get("text", "") for p in parts).strip()
-            if text_out:
-                return text_out
-        return "لم يتمكن الذكاء الاصطناعي من استخراج نص من الصورة."
-    except requests.exceptions.ReadTimeout:
-        return "السيرفر تأخر بالرد، جرّب أرسل الصورة مرة ثانية."
-    except Exception as e:
-        return f"حدث خطأ: {str(e)[:200]}"
+    last_error = ""
+    for model_name in models:
+        url = f"https://googleapis.com{model_name}:generateContent?key={GEMINI_KEY}"
+        try:
+            r = requests.post(url, headers=headers, json=payload, timeout=30)
+            if r.status_code == 200:
+                data = r.json()
+                candidates = data.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    text_out = "".join(p.get("text", "") for p in parts).strip()
+                    if text_out:
+                        return text_out
+            else:
+                last_error = f"({r.status_code}) في {model_name}: {r.text[:150]}"
+        except Exception as e:
+            last_error = str(e)[:150]
+
+    return f"تعذر التحليل. آخر خطأ: {last_error}"
 
 
 @bot.message_handler(commands=["start"])
@@ -134,5 +135,8 @@ def handle_text(message):
 
 if __name__ == "__main__":
     threading.Thread(target=start_port_server, daemon=True).start()
+    bot.remove_webhook()
+    time.sleep(2)
     print("Bot started...")
     bot.infinity_polling(skip_pending=True)
+    
