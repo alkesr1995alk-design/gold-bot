@@ -43,22 +43,18 @@ def start_port_server():
     server.serve_forever()
 
 
-def get_available_models(base_url):
+def get_best_model(base_url):
     try:
-        r = requests.get(base_url + "?key=" + GEMINI_KEY, timeout=15)
+        r = requests.get(base_url + "?key=" + GEMINI_KEY, timeout=10)
         if r.status_code == 200:
-            data = r.json()
-            valid = []
-            for m in data.get("models", []):
+            for m in r.json().get("models", []):
                 name = m.get("name", "").replace("models/", "")
                 methods = m.get("supportedGenerationMethods", [])
                 if "generateContent" in methods and "flash" in name.lower():
-                    valid.append(name)
-            if valid:
-                return valid
+                    return name
     except Exception:
         pass
-    return ["gemini-3-flash-preview", "gemini-2.5-flash", "gemini-flash-latest"]
+    return "gemini-2.5-flash"
 
 
 def ask_gemini_image(img: Image.Image) -> str:
@@ -66,15 +62,16 @@ def ask_gemini_image(img: Image.Image) -> str:
         return "مفتاح GEMINI_KEY غير مضبوط في Environment على Render."
 
     img_rgb = img.convert("RGB")
-    img_rgb.thumbnail((800, 800))
+    img_rgb.thumbnail((640, 640))
     buf = io.BytesIO()
-    img_rgb.save(buf, format="JPEG", quality=75)
+    img_rgb.save(buf, format="JPEG", quality=65)
     b64_img = base64.b64encode(buf.getvalue()).decode("utf-8")
 
     host = "generativelanguage" + "." + "googleapis" + "." + "com"
     base_url = "https://" + host + "/v1beta/models"
-    models = get_available_models(base_url)
+    model_name = get_best_model(base_url)
 
+    url = base_url + "/" + model_name + ":generateContent?key=" + GEMINI_KEY
     headers = {"Content-Type": "application/json"}
     payload = {
         "contents": [
@@ -87,25 +84,20 @@ def ask_gemini_image(img: Image.Image) -> str:
         ]
     }
 
-    last_error = ""
-    for model_name in models:
-        url = base_url + "/" + model_name + ":generateContent?key=" + GEMINI_KEY
-        try:
-            r = requests.post(url, headers=headers, json=payload, timeout=30)
-            if r.status_code == 200:
-                data = r.json()
-                candidates = data.get("candidates", [])
-                if candidates:
-                    parts = candidates[0].get("content", {}).get("parts", [])
-                    text_out = "".join(p.get("text", "") for p in parts).strip()
-                    if text_out:
-                        return text_out
-            else:
-                last_error = f"({r.status_code}) في {model_name}: {r.text[:150]}"
-        except Exception as e:
-            last_error = str(e)[:150]
-
-    return f"تعذر التحليل. آخر خطأ: {last_error}"
+    try:
+        r = requests.post(url, headers=headers, json=payload, timeout=20)
+        if r.status_code == 200:
+            data = r.json()
+            candidates = data.get("candidates", [])
+            first_candidate = next(iter(candidates), {})
+            parts = first_candidate.get("content", {}).get("parts", [])
+            text_out = "".join(p.get("text", "") for p in parts).strip()
+            if text_out:
+                return text_out
+            return "لم يصل نص من الذكاء الاصطناعي."
+        return f"خطأ ({r.status_code}) في {model_name}: {r.text[:150]}"
+    except Exception as e:
+        return f"تعذر الاتصال: {str(e)[:150]}"
 
 
 @bot.message_handler(commands=["start"])
@@ -121,14 +113,17 @@ def send_welcome(message):
 @bot.message_handler(content_types=["photo"])
 def handle_photo(message):
     bot.reply_to(message, "⏳ جاري قراءة الشموع وتحليل السيولة...")
-    file_info = bot.get_file(message.photo[-1].file_id)
-    downloaded = bot.download_file(file_info.file_path)
-    img = Image.open(io.BytesIO(downloaded))
-    result = ask_gemini_image(img)
-    bot.reply_to(message, result)
-    
-    waiting_for_capital[message.chat.id] = True
-    bot.send_message(message.chat.id, "💰 كم يبلغ رأس مالك الحالي بالدولار (اكتب الرقم فقط مثل: 50 أو 100) لأحسب لك حجم العقد الآمن؟")
+    try:
+        file_info = bot.get_file(message.photo[-1].file_id)
+        downloaded = bot.download_file(file_info.file_path)
+        img = Image.open(io.BytesIO(downloaded))
+        result = ask_gemini_image(img)
+        bot.reply_to(message, result)
+        
+        waiting_for_capital[message.chat.id] = True
+        bot.send_message(message.chat.id, "💰 كم يبلغ رأس مالك الحالي بالدولار (اكتب الرقم فقط مثل: 50 أو 100) لأحسب لك حجم العقد الآمن؟")
+    except Exception as e:
+        bot.reply_to(message, f"حدث خطأ أثناء معالجة الصورة: {str(e)[:150]}")
 
 
 @bot.message_handler(func=lambda message: True)
@@ -159,4 +154,4 @@ if __name__ == "__main__":
     time.sleep(2)
     print("Bot started...")
     bot.infinity_polling(skip_pending=True)
-            
+    
