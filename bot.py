@@ -17,7 +17,7 @@ waiting_for_capital = {}
 
 PROMPT = """
 حلل صورة شارت التداول للسكالبينج السريع باستراتيجية SMC. 
-أجب باختصار شديد من أرقام الشارت الظاهرة فقط:
+أجب باختصار شديد من أرقام الشارت الظاهرة فقط (حتى لو كان السوق مغلقاً أعطِ التحليل الفني المتوقع عند الافتتاح):
 - الاتجاه العام:
 - القرار: (BUY أو SELL أو WAIT)
 - نقطة الدخول (Entry):
@@ -43,20 +43,6 @@ def start_port_server():
     server.serve_forever()
 
 
-def get_best_model(base_url):
-    try:
-        r = requests.get(base_url + "?key=" + GEMINI_KEY, timeout=10)
-        if r.status_code == 200:
-            for m in r.json().get("models", []):
-                name = m.get("name", "").replace("models/", "")
-                methods = m.get("supportedGenerationMethods", [])
-                if "generateContent" in methods and "flash" in name.lower():
-                    return name
-    except Exception:
-        pass
-    return "gemini-2.5-flash"
-
-
 def ask_gemini_image(img: Image.Image) -> str:
     if not GEMINI_KEY:
         return "مفتاح GEMINI_KEY غير مضبوط في Environment على Render."
@@ -69,7 +55,7 @@ def ask_gemini_image(img: Image.Image) -> str:
 
     host = "generativelanguage" + "." + "googleapis" + "." + "com"
     base_url = "https://" + host + "/v1beta/models"
-    model_name = get_best_model(base_url)
+    model_name = "gemini-3-flash-preview"
 
     url = base_url + "/" + model_name + ":generateContent?key=" + GEMINI_KEY
     headers = {"Content-Type": "application/json"}
@@ -85,7 +71,7 @@ def ask_gemini_image(img: Image.Image) -> str:
     }
 
     try:
-        r = requests.post(url, headers=headers, json=payload, timeout=20)
+        r = requests.post(url, headers=headers, json=payload, timeout=25)
         if r.status_code == 200:
             data = r.json()
             candidates = data.get("candidates", [])
@@ -95,7 +81,7 @@ def ask_gemini_image(img: Image.Image) -> str:
             if text_out:
                 return text_out
             return "لم يصل نص من الذكاء الاصطناعي."
-        return f"خطأ ({r.status_code}) في {model_name}: {r.text[:150]}"
+        return f"خطأ ({r.status_code}): {r.text[:150]}"
     except Exception as e:
         return f"تعذر الاتصال: {str(e)[:150]}"
 
