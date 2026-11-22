@@ -53,7 +53,7 @@ def ask_gemini_image(img: Image.Image) -> str:
     img_rgb.save(buf, format="JPEG", quality=75)
     b64_img = base64.b64encode(buf.getvalue()).decode("utf-8")
 
-    models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
+    models = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"]
     headers = {"Content-Type": "application/json"}
     payload = {
         "contents": [
@@ -141,4 +141,3 @@ if __name__ == "__main__":
     time.sleep(2)
     print("Bot started...")
     bot.infinity_polling(skip_pending=True)
-        
